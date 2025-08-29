@@ -16,4 +16,5 @@ export const CellState = {
   Unknown: 0 as const,
   Miss: 1 as const,
   Hit: 2 as const,
+  Sunk: 3 as const,
 };

@@ -63,7 +63,7 @@ export default function BattleshipHeatmap() {
   function cycleCell(r: number, c: number) {
     setBoardState((prev) => {
       const copy = prev.map((row) => row.slice());
-      copy[r][c] = (copy[r][c] + 1) % 3;
+      copy[r][c] = (copy[r][c] + 1) % 4;
       return copy;
     });
   }
@@ -75,7 +75,11 @@ export default function BattleshipHeatmap() {
       for (let c = 0; c < boardState[r].length; c++) {
         if (boardState[r][c] === CellState.Hit) {
           hits.add(cellKey(r, c));
-        } else if (boardState[r][c] === CellState.Miss) {
+        } else if (
+          boardState[r][c] === CellState.Miss ||
+          // treat Sunk cells as if they are misses so we don't re-count
+          boardState[r][c] === CellState.Sunk
+        ) {
           misses.add(cellKey(r, c));
         }
       }
@@ -127,12 +131,12 @@ export default function BattleshipHeatmap() {
     const flat: { p: number; r: number; c: number }[] = [];
     for (let r = 0; r < probabilities.length; r++)
       for (let c = 0; c < probabilities[r].length; c++) {
-        if (!knownHits.has(cellKey(r, c)))
+        if (!knownHits.has(cellKey(r, c)) && !knownMisses.has(cellKey(r, c)))
           flat.push({ p: probabilities[r][c] || 0, r, c });
       }
     flat.sort((a, b) => b.p - a.p);
     return flat.slice(0, 10);
-  }, [probabilities, knownHits]);
+  }, [probabilities, knownHits, knownMisses]);
 
   const letters = range(rows).map((i) => String.fromCharCode(65 + i));
 
@@ -186,7 +190,13 @@ export default function BattleshipHeatmap() {
                       minWidth: "24px",
                       minHeight: "24px",
                       background:
-                        state === 1 ? "#cbd5e1" : state === 2 ? "#86efac" : bg,
+                        state === 1
+                          ? "#cbd5e1"
+                          : state === 2
+                          ? "#86efac"
+                          : state === CellState.Sunk
+                          ? "#fcc201"
+                          : bg,
                     }}
                     title={`${key} — ${fmt(p)}`}
                     onClick={() => {
@@ -195,7 +205,11 @@ export default function BattleshipHeatmap() {
                         terminateSampler();
                       }
                     }}
-                  />
+                  >
+                    {state === CellState.Hit && "H"}
+                    {state === CellState.Miss && "M"}
+                    {state === CellState.Sunk && "S"}
+                  </button>
                 );
               })}
             </Fragment>
@@ -263,7 +277,9 @@ export default function BattleshipHeatmap() {
                 </button>
               </div>
             )}
-            {ships.length >= 10 && <p className="text-sm mb-4">Maximum number of ships reached.</p>}
+            {ships.length >= 10 && (
+              <p className="text-sm mb-4">Maximum number of ships reached.</p>
+            )}
             <div>
               {ships.map((ship) => (
                 <div key={ship.id} className="flex items-center gap-2 mb-1">
@@ -367,6 +383,18 @@ export default function BattleshipHeatmap() {
         <div className="mt-4 text-sm">
           Accepted: {acceptedSamples} — Failed: {failedAttempts}
         </div>
+      </div>
+      <div className="flex justify-center">
+        <p className="text-sm">
+          <a
+            className="font-medium text-blue-600 dark:text-blue-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+            href="https://github.com/awwong1/battleship-calculator"
+          >
+            Source Code
+          </a>
+        </p>
       </div>
     </div>
   );

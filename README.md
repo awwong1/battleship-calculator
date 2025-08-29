@@ -1,69 +1,51 @@
-# React + TypeScript + Vite
+# Battleship Probability Calculator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[Demo](https://battleship-calculator.udia.workers.dev/)
 
-Currently, two official plugins are available:
+This project is a tool to help you win at Battleship. It calculates the probability of a ship being in any given cell on the board, based on the current state of the game. This is visualized as a heatmap, allowing you to make more informed decisions about where to fire your next shot.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## How it works
 
-## Expanding the ESLint configuration
+The calculator uses a Monte Carlo method to determine the probabilities. A web worker runs in the background, generating thousands of valid random ship placements that are consistent with the known information about the board (hits, misses, and sunk ships). The probabilities are then calculated by counting how many times a ship is placed in each cell across all valid simulations.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Features
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+-   **Interactive Grid**: Click on cells to cycle through states (Unknown, Miss, Hit, Sunk).
+-   **Customizable Board Size**: Adjust the number of rows and columns.
+-   **Manage Ships**: Add, remove, and update the dimensions of the ships remaining in play. Mark ships as sunk.
+-   **Real-time Heatmap**: The board updates with a color-coded heatmap representing the probability distribution of ship locations.
+-   **Top 10 Cells**: A list of the 10 most likely cells to contain a ship is displayed.
+-   **Web Worker for Performance**: The heavy computations are offloaded to a separate thread to keep the UI responsive.
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+## Getting Started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+To run this project locally, you'll need [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/awwong1/battleship-calculator.git
+    cd battleship-calculator
+    ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+3.  **Run the development server:**
+    ```bash
+    npm run dev
+    ```
+
+    This will start a local development server. You can view the application in your browser at the address provided in the terminal (usually `http://localhost:5173`).
+
+## Deployment
+
+This project is configured for deployment to [Cloudflare Workers](https://workers.cloudflare.com/).
+
+To deploy the application, you'll need a Cloudflare account and the [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/get-started/) installed and configured.
+
+Once set up, you can deploy with the following command:
+
+```bash
+npm run deploy
