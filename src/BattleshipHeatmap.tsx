@@ -1,11 +1,14 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { MessagePayload, Ship } from "./utils";
+import type { /*MessagePayload,*/ Ship } from "./utils";
 import { cellKey, CellState } from "./utils";
-import SampleWorker from "./worker/sampler?worker";
+// import SampleWorker from "./worker/sampler?worker";
+type Cell = [number, number];
 
 // Helper to create a range of numbers [0, n)
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 const fmt = (v: number) => `${Math.round(v * 10000) / 100}%`;
+
+const DEFAULT_NUM_SAMPLES = 1000;
 
 export default function BattleshipHeatmap() {
   const [rows, setRows] = useState(10);
@@ -18,7 +21,7 @@ export default function BattleshipHeatmap() {
     { id: Date.now() - 4, h: 1, w: 2, sunk: false },
     { id: Date.now() - 5, h: 1, w: 2, sunk: false },
   ]);
-  const [samples, setSamples] = useState(10000000);
+  const [samples, setSamples] = useState(DEFAULT_NUM_SAMPLES);
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
 
@@ -94,31 +97,159 @@ export default function BattleshipHeatmap() {
     setAcceptedSamples(0);
     setFailedAttempts(0);
 
-    let worker = sampleWorker;
-    if (!worker) {
-      worker = new SampleWorker();
-      setSampleWorker(worker);
+    // Generate all possible placements for a given ship height and width
+    function generatePlacements(shipH: number, shipW: number): Cell[][] {
+      const placements: Cell[][] = [];
+      // Horizontal and vertical placements
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (r + shipH <= rows && c + shipW <= cols) {
+            const coords: Cell[] = [];
+            for (let dr = 0; dr < shipH; dr++) {
+              for (let dc = 0; dc < shipW; dc++) {
+                coords.push([r + dr, c + dc]);
+              }
+            }
+            if (!coords.some(([rr, cc]) => knownMisses.has(cellKey(rr, cc)))) {
+              placements.push(coords);
+            }
+          }
+          if (shipH !== shipW && r + shipW <= rows && c + shipH <= cols) {
+            const coords: Cell[] = [];
+            for (let dr = 0; dr < shipW; dr++) {
+              for (let dc = 0; dc < shipH; dc++) {
+                coords.push([r + dr, c + dc]);
+              }
+            }
+            if (!coords.some(([rr, cc]) => knownMisses.has(cellKey(rr, cc)))) {
+              placements.push(coords);
+            }
+          }
+        }
+      }
+      return placements;
     }
 
-    worker.postMessage({
-      rows,
-      cols,
-      ships,
-      samples,
-      knownHits: Array.from(knownHits),
-      knownMisses: Array.from(knownMisses),
-    } as MessagePayload);
+    // Build placement lists for each ship
+    const shipPlacements: Cell[][][] = [];
+    for (const s of ships) {
+      if (s.sunk) continue;
+      shipPlacements.push(generatePlacements(s.h, s.w));
+    }
 
-    worker.onmessage = (e: MessageEvent) => {
-      const msg = e.data;
-      setProgress(msg.progress);
-      setAcceptedSamples(msg.accepted);
-      setFailedAttempts(msg.failed);
-      setProbabilities(msg.probabilities);
-      if (msg.type === "done") {
-        terminateSampler();
+    // console.log(shipPlacements)
+
+    // Precompute incompatibilities
+    const incompatible = new Map<string, Set<string>>();
+    function placementKey(p: Cell[]): string {
+      return p.map(([r, c]) => `${r},${c}`).join(";");
+    }
+
+    for (let shipI = 0; shipI < shipPlacements.length; shipI++) {
+      for (const p1 of shipPlacements[shipI]) {
+        const k1 = placementKey(p1);
+        for (let shipJ = shipI + 1; shipJ < shipPlacements.length; shipJ++) {
+          for (const p2 of shipPlacements[shipJ]) {
+            const k2 = placementKey(p2);
+            if (
+              p1.some(([r, c]) => p2.some(([rr, cc]) => r === rr && c === cc))
+            ) {
+              if (!incompatible.has(k1)) incompatible.set(k1, new Set());
+              if (!incompatible.has(k2)) incompatible.set(k2, new Set());
+              incompatible.get(k1)!.add(k2);
+              incompatible.get(k2)!.add(k1);
+            }
+          }
+        }
       }
-    };
+    }
+
+    // console.log(incompatible)
+
+    // Frequencies
+    const locationFrequencies = new Map<string, number>();
+    let validConfigurations = 0;
+
+    const iterStart = performance.timeOrigin + performance.now();
+    let lastMessageTime = iterStart;
+
+    while (validConfigurations < 1) {
+      for (let iter = 0; iter < samples; iter++) {
+        const chosen: string[] = [];
+        const occupied = new Set<string>();
+        let failed = false;
+
+        for (const plist of shipPlacements) {
+          if (plist.length === 0) {
+            failed = true;
+            break;
+          }
+          const choice = plist[Math.floor(Math.random() * plist.length)];
+          const k = placementKey(choice);
+          if (chosen.some((c) => incompatible.get(c)?.has(k))) {
+            failed = true;
+            break;
+          }
+          chosen.push(k);
+          for (const [r, c] of choice) occupied.add(cellKey(r, c));
+        }
+
+        if (failed) continue;
+
+        // Check hits are covered
+        if ([...knownHits].some((h) => !occupied.has(h))) continue;
+
+        for (const k of chosen)
+          locationFrequencies.set(k, (locationFrequencies.get(k) ?? 0) + 1);
+
+        validConfigurations++;
+
+        const currentTime = performance.timeOrigin + performance.now();
+        if (currentTime - 100 > lastMessageTime || iter - 1 >= samples) {
+          const squareFreq = Array.from({ length: rows }, () =>
+            Array(cols).fill(0)
+          );
+          for (const [k, freq] of locationFrequencies) {
+            const cells = k
+              .split(";")
+              .map((p) => p.split(",").map(Number) as [number, number]);
+            for (const [r, c] of cells) squareFreq[r][c] += freq;
+          }
+
+          setProgress(iter / samples);
+          setAcceptedSamples(validConfigurations);
+          setFailedAttempts(iter + 1 - validConfigurations);
+          setProbabilities(
+            squareFreq.map((row) =>
+              row.map((v) =>
+                validConfigurations > 0 ? v / validConfigurations : 0
+              )
+            )
+          );
+
+          console.log(iter / samples);
+          lastMessageTime = currentTime;
+        }
+      }
+    }
+
+    const squareFreq = Array.from({ length: rows }, () => Array(cols).fill(0));
+    for (const [k, freq] of locationFrequencies) {
+      const cells = k
+        .split(";")
+        .map((p) => p.split(",").map(Number) as [number, number]);
+      for (const [r, c] of cells) squareFreq[r][c] += freq;
+    }
+
+    setRunning(false);
+    setProgress(1);
+    setAcceptedSamples(validConfigurations);
+    setFailedAttempts(samples - validConfigurations);
+    setProbabilities(
+      squareFreq.map((row) =>
+        row.map((v) => (validConfigurations > 0 ? v / validConfigurations : 0))
+      )
+    );
   }
 
   function terminateSampler() {
@@ -362,7 +493,9 @@ export default function BattleshipHeatmap() {
             type="number"
             className="border p-1"
             value={samples}
-            onChange={(e) => setSamples(Number(e.target.value) || 10000000)}
+            onChange={(e) =>
+              setSamples(Number(e.target.value) || DEFAULT_NUM_SAMPLES)
+            }
           />
           <button
             className={`px-4 py-2 rounded text-white ${
