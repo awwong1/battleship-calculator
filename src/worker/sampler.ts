@@ -84,59 +84,61 @@ self.onmessage = (e: MessageEvent<MessagePayload>) => {
   const iterStart = performance.timeOrigin + performance.now();
   let lastMessageTime = iterStart;
 
-  for (let iter = 0; iter < samples; iter++) {
-    const chosen: string[] = [];
-    const occupied = new Set<string>();
-    let failed = false;
+  while (validConfigurations < 1) {
+    for (let iter = 0; iter < samples; iter++) {
+      const chosen: string[] = [];
+      const occupied = new Set<string>();
+      let failed = false;
 
-    for (const plist of shipPlacements) {
-      if (plist.length === 0) {
-        failed = true;
-        break;
+      for (const plist of shipPlacements) {
+        if (plist.length === 0) {
+          failed = true;
+          break;
+        }
+        const choice = plist[Math.floor(Math.random() * plist.length)];
+        const k = placementKey(choice);
+        if (chosen.some((c) => incompatible.get(c)?.has(k))) {
+          failed = true;
+          break;
+        }
+        chosen.push(k);
+        for (const [r, c] of choice) occupied.add(cellKey(r, c));
       }
-      const choice = plist[Math.floor(Math.random() * plist.length)];
-      const k = placementKey(choice);
-      if (chosen.some((c) => incompatible.get(c)?.has(k))) {
-        failed = true;
-        break;
+
+      if (failed) continue;
+
+      // Check hits are covered
+      if ([...hitSet].some((h) => !occupied.has(h))) continue;
+
+      for (const k of chosen)
+        locationFrequencies.set(k, (locationFrequencies.get(k) ?? 0) + 1);
+
+      validConfigurations++;
+
+      const currentTime = performance.timeOrigin + performance.now();
+      if (currentTime - 100 > lastMessageTime || iter - 1 >= samples) {
+        const squareFreq = Array.from({ length: rows }, () =>
+          Array(cols).fill(0)
+        );
+        for (const [k, freq] of locationFrequencies) {
+          const cells = k
+            .split(";")
+            .map((p) => p.split(",").map(Number) as [number, number]);
+          for (const [r, c] of cells) squareFreq[r][c] += freq;
+        }
+        self.postMessage({
+          type: "progress",
+          progress: iter / samples,
+          accepted: validConfigurations,
+          failed: iter + 1 - validConfigurations,
+          probabilities: squareFreq.map((row) =>
+            row.map((v) =>
+              validConfigurations > 0 ? v / validConfigurations : 0
+            )
+          ),
+        });
+        lastMessageTime = currentTime;
       }
-      chosen.push(k);
-      for (const [r, c] of choice) occupied.add(cellKey(r, c));
-    }
-
-    if (failed) continue;
-
-    // Check hits are covered
-    if ([...hitSet].some((h) => !occupied.has(h))) continue;
-
-    for (const k of chosen)
-      locationFrequencies.set(k, (locationFrequencies.get(k) ?? 0) + 1);
-
-    validConfigurations++;
-
-    const currentTime = performance.timeOrigin + performance.now();
-    if (currentTime - 100 > lastMessageTime || iter - 1 >= samples) {
-      const squareFreq = Array.from({ length: rows }, () =>
-        Array(cols).fill(0)
-      );
-      for (const [k, freq] of locationFrequencies) {
-        const cells = k
-          .split(";")
-          .map((p) => p.split(",").map(Number) as [number, number]);
-        for (const [r, c] of cells) squareFreq[r][c] += freq;
-      }
-      self.postMessage({
-        type: "progress",
-        progress: iter / samples,
-        accepted: validConfigurations,
-        failed: iter + 1 - validConfigurations,
-        probabilities: squareFreq.map((row) =>
-          row.map((v) =>
-            validConfigurations > 0 ? v / validConfigurations : 0
-          )
-        ),
-      });
-      lastMessageTime = currentTime;
     }
   }
 

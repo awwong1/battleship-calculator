@@ -7,6 +7,8 @@ import SampleWorker from "./worker/sampler?worker";
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 const fmt = (v: number) => `${Math.round(v * 10000) / 100}%`;
 
+const DEFAULT_NUM_SAMPLES = 10000000
+
 export default function BattleshipHeatmap() {
   const [rows, setRows] = useState(10);
   const [cols, setCols] = useState(10);
@@ -18,7 +20,7 @@ export default function BattleshipHeatmap() {
     { id: Date.now() - 4, h: 1, w: 2, sunk: false },
     { id: Date.now() - 5, h: 1, w: 2, sunk: false },
   ]);
-  const [samples, setSamples] = useState(10000000);
+  const [samples, setSamples] = useState(DEFAULT_NUM_SAMPLES);
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
 
@@ -362,7 +364,7 @@ export default function BattleshipHeatmap() {
             type="number"
             className="border p-1"
             value={samples}
-            onChange={(e) => setSamples(Number(e.target.value) || 10000000)}
+            onChange={(e) => setSamples(Number(e.target.value) || DEFAULT_NUM_SAMPLES)}
           />
           <button
             className={`px-4 py-2 rounded text-white ${
